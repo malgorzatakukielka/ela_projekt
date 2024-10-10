@@ -21,6 +21,7 @@ ui <- fluidPage(
       conditionalPanel(
         condition = "input.kierunek != ''",
         selectInput("poziomforma", "Wybierz poziom i formę studiów:", choices = NULL)
+        #zamiana na jedną listę wyboru
       ), 
       radioButtons("zarobki", "Zarobki", choices = unique(ela1$p)),
       actionButton("reset_input", "Wyczyść") 
@@ -39,7 +40,7 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   observeEvent(input$uczelnia, {
     updateSelectInput(session, "kierunek", selected = NULL)
-    updateSelectInput(session, "poziomforma", selected = NULL)
+    updateSelectInput(session, "poziomforma", selected = NULL) #zamiana inputId
   })
   
   uczelnia <- reactive({
@@ -63,12 +64,14 @@ server <- function(input, output, session) {
   observeEvent(input$kierunek, {
     choices <- unique(kierunek()$P_POZIOMFORMA)
     updateSelectInput(session, inputId = "poziomforma", choices = c("", choices))
+    #zamiana inputId
   })
   
   poziomforma <- reactive({
     req(input$kierunek)
     filter(kierunek(), P_POZIOMFORMA == input$poziomforma)
   })
+  #zmiana kolumny tabeli i Id inputu
   
   observeEvent(input$reset_input, {
     shinyjs::refresh()

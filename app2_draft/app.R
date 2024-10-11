@@ -25,13 +25,13 @@ ui <- fluidPage(
       ), 
       radioButtons("zarobki", "Zarobki", choices = unique(ela1$p)),
       
-      #slider - na ten moment jedynie UI
+      #slider
       conditionalPanel(
         condition = "input.poziomforma != ''",
         sliderInput("lata", "Wybierz lata:", 
                     min = 2015, 
                     max = max(ela1$P_ROKDYP), 
-                    value = c(2015, 2021), step = 1, sep = "", width = '85%')) ,  
+                    value = c(2015, 2022), step = 1, sep = "", width = '85%')) ,  
       
       actionButton("reset_input", "Wyczyść")
     ),
@@ -101,7 +101,7 @@ server <- function(input, output, session) {
       xlab("Rok uzyskania dyplomu") +
       ylab("Mediana zarobków") +
       ylim(0, 10000) +
-      scale_x_continuous(breaks = c(2015:2021), limits = input$lata-0.5)
+      scale_x_continuous(breaks = c(2015:2022), limits = c(min(input$lata)-0.5, max(input$lata)+0.5))
     
     ggplotly(p, tooltip = "text")
   })

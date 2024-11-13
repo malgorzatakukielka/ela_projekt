@@ -1,3 +1,4 @@
+#WERSJA ZE SLIDEREM
 #ładowanie pakietów
 library(shiny)
 library(ggplot2)
@@ -38,10 +39,14 @@ ui <- fluidPage(
     mainPanel(
       tags$style(type="text/css",
                  ".shiny-output-error { visibility: hidden; }",
-                 ".shiny-output-error:before { visibility: hidden; }"
+                 ".shiny-output-error:before { visibility: hidden; }",
+                 "#on_off_container { text-align: right; margin-top: 10px; }"
       ),
-      plotlyOutput("wykres"),
-      textOutput("komentarz")
+      plotlyOutput("wykres", height = "600px"), #dostosowanie wysokości
+      conditionalPanel(
+        condition = "input.poziomforma != ''",
+        checkboxInput("on_off", "Pokaż/ukryj poszczególne kierunki", TRUE) #"wyłącznik" poszczególnych kierunków
+      )
     )
   )
 )
@@ -89,24 +94,68 @@ server <- function(input, output, session) {
   
   output$wykres <- renderPlotly({
     req(input$poziomforma)
-    dane_do_wykresu <- poziomforma() %>%
-      filter(p == input$zarobki)
+    # Filtrowanie danych
+    dane_do_wykresu <- ela1 %>%
+      filter(P_NAZWA_UCZELNI == input$uczelnia,
+             P_KIERUNEK_NAZWA == input$kierunek,
+             P_POZIOMFORMA == input$poziomforma,
+             p == input$zarobki) %>%
+      mutate(P_NAZWA_JEDN = ifelse(P_NAZWA_JEDN == "", 
+                                   "Jednostka niesprecyzowana", 
+                                   P_NAZWA_JEDN)) %>%
+      select(P_ROKDYP, me_zar, P_NAZWA_JEDN, P_N, P_KIERUNEK_ID, P_NAZWA_KIERUNKU_PELNA)
     
-    p <- ggplot(dane_do_wykresu, aes(x = P_ROKDYP,
-                                     y = me_zar,
-                                     text = paste("Rok:", P_ROKDYP, 
-                                                  "\n", "Mediana zarobków:",
-                                                  me_zar))) +
-      geom_line(group = 1) + theme_bw() +
+    # Obliczenie średniej ważonej dla mediany zarobków 
+    srednia_suma <- dane_do_wykresu %>%
+      group_by(P_ROKDYP) %>% 
+      summarise(srednia = sum(P_N * me_zar) / sum(P_N), suma_P_N = sum(P_N))
+    
+    # Tworzenie wykresu
+    #stary wykres
+    # p <- ggplot(dane_do_wykresu, aes(x = P_ROKDYP,
+    #                                  y = me_zar,
+    #                                  color = P_NAZWA_JEDN,
+    #                                  group = P_NAZWA_JEDN,
+    #                                  text = paste("Rok:", P_ROKDYP, 
+    #                                               "\nMediana zarobków:", me_zar, 
+    #                                               "\nJednostka:", P_NAZWA_JEDN))) +
+    #   geom_line() +
+    #   theme_bw() +
+    #   xlab("Rok uzyskania dyplomu") +
+    #   ylab("Mediana zarobków") +
+    #   labs(color = "Jednostka Organizacyjna") +
+    #   ylim(0, 10000) +
+    #   scale_x_continuous(breaks = seq(2015, 2022, by = 1), limits = c(2014.5, 2022.5))
+    
+    #nowy wykres
+    p <- dane_do_wykresu %>% 
+      ggplot(aes(x = P_ROKDYP)) +
+      geom_line(data = srednia_suma, aes(y = srednia), color = 'black', linewidth = 1) +
+      geom_point(data = srednia_suma, 
+                 aes(y = srednia, 
+                     text = paste("Średnia ważona:", round(srednia, 2), 
+                                  "\nLiczba absolwentów:", suma_P_N)), 
+                 color = 'black', size = 3) +
       xlab("Rok uzyskania dyplomu") +
       ylab("Mediana zarobków") +
       ylim(0, 10000) +
-      scale_x_continuous(breaks = c(2015:2022), limits = c(min(input$lata)-0.5, max(input$lata)+0.5))
+      scale_x_continuous(breaks = c(2015:2022), limits = c(min(input$lata)-0.5, max(input$lata)+0.5))+
+      theme_bw()
+    
+    if (input$on_off) {
+      p <- p + geom_line(aes(y = me_zar, group = P_KIERUNEK_ID), color = 'grey') +
+        geom_point(aes(y = me_zar,
+                       text = paste("Rok:", P_ROKDYP, 
+                                    "\nMediana zarobków:" ,me_zar, 
+                                    "\nLiczba absolwentów:", P_N,
+                                    "\nNazwa kierunku:" ,P_NAZWA_KIERUNKU_PELNA, 
+                                    "\nJednostka:", P_NAZWA_JEDN)), 
+                   color = 'grey')
+    }
     
     ggplotly(p, tooltip = "text")
   })
-  
-  
 }
 
 shinyApp(ui, server)
+

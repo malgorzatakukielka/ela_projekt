@@ -6,6 +6,7 @@ library(plotly)
 library(tidyverse)
 library(shinyjs)
 library(bslib)
+library(shinyToastify)
 
 #źródło danych
 ela1 <- read.csv("~/ela_projekt/ela1.csv")
@@ -18,7 +19,9 @@ comparison_data <- reactiveVal(data.frame(P_ROKDYP = integer(),
                                           srednia = numeric(), 
                                           uczelnia = character(), 
                                           kierunek = character(), 
-                                          poziomforma = character()))
+                                          poziomforma = character(),
+                                          mediana_lata = character()
+                                          ))
 
 ui <- page_navbar(
   title = "Ekonomiczne Losy Absolwentów",
@@ -26,6 +29,7 @@ ui <- page_navbar(
     title = "Zarobki absolwentów",
     fluidPage(theme = "button.css",
       useShinyjs(),
+      useShinyToastify(),
       titlePanel("Zarobki absolwentów"),
       sidebarLayout(
         sidebarPanel(
@@ -49,7 +53,20 @@ ui <- page_navbar(
                     max = max(ela1$P_ROKDYP), 
                     value = c(2015, 2022), step = 1, sep = "", width = '85%')) ,
       
-      actionButton("add_to_comparison", "Dodaj do porównania"), #porównanie
+       #dodaj do porównania 
+      conditionalPanel(
+        condition = "!output.isAdded",
+        actionButton("add_to_comparison", "Dodaj do porównania")
+      ),
+      
+      #usuń z porównania
+      conditionalPanel(
+        condition = "output.isAdded",
+        actionButton("remove_from_comparison", "Usuń z porównania")
+      ),
+      
+      br(),
+      
       actionButton("reset_input", "Wyczyść")
       
     ),
@@ -176,12 +193,81 @@ server <- function(input, output, session) {
                p == input$zarobki) %>%
         group_by(P_ROKDYP) %>%
         summarise(srednia = sum(P_N * me_zar) / sum(P_N)) %>%
-        mutate(uczelnia = input$uczelnia, kierunek = input$kierunek, poziomforma = input$poziomforma)
+        mutate(uczelnia = input$uczelnia, kierunek = input$kierunek, 
+               poziomforma = input$poziomforma, mediana_lata = input$zarobki)
       
       # Dodanie do istniejącej tabeli
       current_data <- comparison_data()
       updated_data <- bind_rows(current_data, dane_do_dodania)
       comparison_data(updated_data)
+    })
+    
+    #sprawdzenie, czy kierunek jest w comparison_data
+    output$isAdded <- reactive({
+      req(input$kierunek, input$uczelnia)
+      any(
+        comparison_data()$kierunek == input$kierunek & 
+          comparison_data()$uczelnia == input$uczelnia &
+          comparison_data()$poziomforma == input$poziomforma &
+          comparison_data()$mediana_lata == input$zarobki
+      )
+    })
+    #Kod do logiki dodaj/usuń
+    outputOptions(output, "isAdded", suspendWhenHidden = FALSE)
+    
+    
+    #Logika usuwania z porównania
+    observeEvent(input$remove_from_comparison, {
+      comparison_data(
+        comparison_data() %>%
+          filter(!(kierunek == input$kierunek & uczelnia == input$uczelnia))
+      )
+    })
+    
+    observeEvent(input$remove_from_comparison, {
+      showToast(
+        session,
+        input,
+        text = "Pomyślnie usunięto z porównania",
+        position = "bottom-right",
+        hideProgressBar = T,
+        style = list(
+          color = "#3b3b3b"
+        )
+      )
+    })
+    
+    observeEvent(input$add_to_comparison, {
+      if (input$kierunek != "" &
+         input$uczelnia != "" &
+         input$poziomforma != "")
+        showToast(
+          session,
+          input,
+          text = "Pomyślnie dodano do porównania",
+          position = "bottom-right",
+          hideProgressBar = T,
+          style = list(
+            color = "#3b3b3b"
+          )
+        )
+      else {
+        showToast(
+          session,
+          input,
+          text = "Aby dodać do porównania uzupełnij nazwę uczelni, kierunku oraz poziom i formę studiów",
+          position = "bottom-right",
+          hideProgressBar = T,
+          style = list(
+            width = "400px",
+            right = "100px",
+            bottom = "20px",
+            padding = "10px",
+            color = "#3b3b3b"
+          )
+      )
+      }
+      
     })
     
     #output drugiego okna
@@ -190,11 +276,11 @@ server <- function(input, output, session) {
       
 
         comp_p <- ggplot(data, aes(x = P_ROKDYP, y = srednia, 
-                         color = str_wrap(interaction(kierunek, uczelnia, 
-                                                      poziomforma, sep = ", "), 50),
+                                   color = paste(kierunek, uczelnia, poziomforma, mediana_lata, sep = ",\n"),
                          text = paste("Zarobki:", round(srednia, 2),
                                       "\nKierunek:", kierunek,
-                                      "\nUczelnia:", uczelnia)
+                                      "\nUczelnia:", uczelnia,
+                                      "\nZarobki:", mediana_lata)
                          )) +
           geom_line(aes(group = interaction(kierunek, uczelnia, poziomforma))) +
           geom_point() +

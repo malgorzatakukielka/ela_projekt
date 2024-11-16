@@ -5,26 +5,41 @@ library(ggplot2)
 library(plotly)
 library(tidyverse)
 library(shinyjs)
+library(bslib)
 
+#źródło danych
 ela1 <- read.csv("~/ela_projekt/ela1.csv")
 
-ui <- fluidPage(
-  useShinyjs(),
-  titlePanel("Zarobki absolwentów"),
-  sidebarLayout(
-    sidebarPanel(
-      selectizeInput("uczelnia", "Wybierz uczelnię:", 
-                     choices = c("", unique(ela1$P_NAZWA_UCZELNI))), 
-      conditionalPanel(
-        condition = "input.uczelnia != ''",
-        selectInput("kierunek", "Wybierz kierunek:", choices = NULL)
-      ),
-      conditionalPanel(
-        condition = "input.kierunek != ''",
-        selectInput("poziomforma", "Wybierz poziom i formę studiów:", choices = NULL)
-        #zamiana na jedną listę wyboru
-      ), 
-      radioButtons("zarobki", "Zarobki", choices = unique(ela1$p)),
+#źródło do slidera
+source("./Rsource/SwitchButton.R")
+
+#tabela do porównań
+comparison_data <- reactiveVal(data.frame(P_ROKDYP = integer(), 
+                                          srednia = numeric(), 
+                                          uczelnia = character(), 
+                                          kierunek = character(), 
+                                          poziomforma = character()))
+
+ui <- page_navbar(
+  title = "Ekonomiczne Losy Absolwentów",
+  nav_panel( #1. zakładka aplikacji
+    title = "Zarobki absolwentów",
+    fluidPage(theme = "button.css",
+      useShinyjs(),
+      titlePanel("Zarobki absolwentów"),
+      sidebarLayout(
+        sidebarPanel(
+          selectizeInput("uczelnia", "Wybierz uczelnię:", 
+                         choices = c("", unique(ela1$P_NAZWA_UCZELNI))), 
+          conditionalPanel(
+            condition = "input.uczelnia != ''",
+            selectInput("kierunek", "Wybierz kierunek:", choices = NULL)
+          ),
+          conditionalPanel(
+            condition = "input.kierunek != ''",
+            selectInput("poziomforma", "Wybierz poziom i formę studiów:", choices = NULL)
+          ), 
+          radioButtons("zarobki", "Zarobki", choices = unique(ela1$p)),
       
       #slider
       conditionalPanel(
@@ -32,9 +47,11 @@ ui <- fluidPage(
         sliderInput("lata", "Wybierz lata:", 
                     min = 2015, 
                     max = max(ela1$P_ROKDYP), 
-                    value = c(2015, 2022), step = 1, sep = "", width = '85%')) ,  
+                    value = c(2015, 2022), step = 1, sep = "", width = '85%')) ,
       
+      actionButton("add_to_comparison", "Dodaj do porównania"), #porównanie
       actionButton("reset_input", "Wyczyść")
+      
     ),
     mainPanel(
       tags$style(type="text/css",
@@ -45,10 +62,20 @@ ui <- fluidPage(
       plotlyOutput("wykres", height = "600px"), #dostosowanie wysokości
       conditionalPanel(
         condition = "input.poziomforma != ''",
-        checkboxInput("on_off", "Pokaż/ukryj poszczególne kierunki", TRUE) #"wyłącznik" poszczególnych kierunków
-      )
+        switchButton("on_off", "Pokaż/ukryj poszczególne kierunki", value = TRUE, col = "GB") #"wyłącznik" poszczególnych kierunków
+     )
     )
+   )
   )
+ ),
+ nav_panel( # 2. zakładka aplikacji
+   title = "Porównanie",
+   fluidPage(
+     useShinyjs(),
+     titlePanel("Zarobki absolwentów - porównanie"),
+     plotlyOutput("comparison_plot", height = "600px")
+  )
+ )
 )
 
 
@@ -110,23 +137,6 @@ server <- function(input, output, session) {
       group_by(P_ROKDYP) %>% 
       summarise(srednia = sum(P_N * me_zar) / sum(P_N), suma_P_N = sum(P_N))
     
-    # Tworzenie wykresu
-    #stary wykres
-    # p <- ggplot(dane_do_wykresu, aes(x = P_ROKDYP,
-    #                                  y = me_zar,
-    #                                  color = P_NAZWA_JEDN,
-    #                                  group = P_NAZWA_JEDN,
-    #                                  text = paste("Rok:", P_ROKDYP, 
-    #                                               "\nMediana zarobków:", me_zar, 
-    #                                               "\nJednostka:", P_NAZWA_JEDN))) +
-    #   geom_line() +
-    #   theme_bw() +
-    #   xlab("Rok uzyskania dyplomu") +
-    #   ylab("Mediana zarobków") +
-    #   labs(color = "Jednostka Organizacyjna") +
-    #   ylim(0, 10000) +
-    #   scale_x_continuous(breaks = seq(2015, 2022, by = 1), limits = c(2014.5, 2022.5))
-    
     #nowy wykres
     p <- dane_do_wykresu %>% 
       ggplot(aes(x = P_ROKDYP)) +
@@ -138,7 +148,6 @@ server <- function(input, output, session) {
                  color = 'black', size = 3) +
       xlab("Rok uzyskania dyplomu") +
       ylab("Mediana zarobków") +
-      ylim(0, 10000) +
       scale_x_continuous(breaks = c(2015:2022), limits = c(min(input$lata)-0.5, max(input$lata)+0.5))+
       theme_bw()
     
@@ -155,6 +164,51 @@ server <- function(input, output, session) {
     
     ggplotly(p, tooltip = "text")
   })
+    
+    #dodanie do porównania
+    observeEvent(input$add_to_comparison, {
+      req(input$poziomforma)
+      
+      dane_do_dodania <- ela1 %>%
+        filter(P_NAZWA_UCZELNI == input$uczelnia,
+               P_KIERUNEK_NAZWA == input$kierunek,
+               P_POZIOMFORMA == input$poziomforma,
+               p == input$zarobki) %>%
+        group_by(P_ROKDYP) %>%
+        summarise(srednia = sum(P_N * me_zar) / sum(P_N)) %>%
+        mutate(uczelnia = input$uczelnia, kierunek = input$kierunek, poziomforma = input$poziomforma)
+      
+      # Dodanie do istniejącej tabeli
+      current_data <- comparison_data()
+      updated_data <- bind_rows(current_data, dane_do_dodania)
+      comparison_data(updated_data)
+    })
+    
+    #output drugiego okna
+    output$comparison_plot <- renderPlotly({
+      data <- comparison_data()
+      
+
+        comp_p <- ggplot(data, aes(x = P_ROKDYP, y = srednia, 
+                         color = str_wrap(interaction(kierunek, uczelnia, 
+                                                      poziomforma, sep = ", "), 50),
+                         text = paste("Zarobki:", round(srednia, 2),
+                                      "\nKierunek:", kierunek,
+                                      "\nUczelnia:", uczelnia)
+                         )) +
+          geom_line(aes(group = interaction(kierunek, uczelnia, poziomforma))) +
+          geom_point() +
+          ylab("Mediana zarobków")+
+          xlab("Rok uzyskania dyplomu") +
+          theme_bw()+
+          guides(color=guide_legend(title="Kierunki studiów w porównaniu"))+
+          scale_x_continuous(breaks = c(2015:2022), limits = c(2014.5, 2022.5))
+        
+        ggplotly(comp_p, tooltip = "text")
+      
+    })
+      
+
 }
 
 shinyApp(ui, server)

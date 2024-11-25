@@ -7,7 +7,6 @@ library(tidyverse)
 library(shinyjs)
 library(bslib)
 library(shinyToastify)
-library(DT)
 
 #źródło danych
 ela1 <- read.csv("~/ela_projekt/ela1.csv")
@@ -91,16 +90,11 @@ ui <- page_navbar(
    fluidPage(
      useShinyjs(),
      titlePanel("Zarobki absolwentów - porównanie"),
-     navset_card_underline(title = "Porównania",
-     nav_panel("Wykres",
-     plotlyOutput("comparison_plot", height = "600px", width = "1750px")),
-     nav_panel("Tabela",
-     DTOutput("tabela")
+     plotlyOutput("comparison_plot", height = "600px")),
      )        
     )
-   )
-  )
- )
+  
+ 
 
 
 server <- function(input, output, session) {
@@ -301,17 +295,6 @@ server <- function(input, output, session) {
       
     })
     
-
-    #tabela output
-    output$tabela <- renderDataTable({
-      comparison_table <- comparison_data() %>% 
-      select(uczelnia, kierunek, poziomforma, mediana_lata) %>% 
-        distinct()
-      
-      comparison_table
-      
-    })
-      
 
 }
 

@@ -334,41 +334,6 @@ server <- function(input, output, session) {
       
     })
     
-    # Logika usuwania rekordów z porównania
-    observeEvent(input$table_cell_clicked, {
-      info <- input$table_cell_clicked
-      # Upewnij się, że kliknięto przycisk w kolumnie Akcja
-      if (!is.null(info) && !is.null(info$row) && info$col == 6) {  # Sprawdzamy, czy kliknięto przycisk w kolumnie "Akcja"
-        row <- info$row
-        
-        # Upewnijmy się, że kliknięty wiersz istnieje w comparison_data
-        selected_data <- comparison_data()[row, ]
-        
-        # Sprawdzamy, czy selected_data zawiera wartości
-        if (nrow(selected_data) > 0) {
-          # Usuń wszystkie rekordy z tego samego kierunku, uczelni, poziomu i mediana_lata
-          comparison_data(
-            comparison_data() %>%
-              filter(!(uczelnia == selected_data$uczelnia & 
-                         kierunek == selected_data$kierunek & 
-                         poziomforma == selected_data$poziomforma & 
-                         mediana_lata == selected_data$mediana_lata))
-          )
-          
-          # Powiadomienie o usunięciu
-          showToast(
-            session,
-            input,
-            text = "Pomyślnie usunięto z porównania wszystkie lata",
-            position = "bottom-right",
-            hideProgressBar = TRUE,
-            style = list(
-              color = "#3b3b3b"
-            )
-          )
-        }
-      }
-    })
     
 
 }

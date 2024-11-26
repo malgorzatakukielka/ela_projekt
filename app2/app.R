@@ -8,12 +8,16 @@ library(shinyjs)
 library(bslib)
 library(shinyToastify)
 library(DT)
+library(data.table)
 
 #źródło danych
 ela1 <- read.csv("~/ela_projekt/ela1.csv")
 
 #źródło do slidera
 source("./Rsource/SwitchButton.R")
+
+#źródło do tabeli
+source("./Rsource/shinyInput.R")
 
 #tabela do porównań
 comparison_data <- reactiveVal(data.frame(P_ROKDYP = integer(), 
@@ -90,7 +94,6 @@ ui <- page_navbar(
    title = "Porównanie",
    fluidPage(
      useShinyjs(),
-     includeScript("www/delete.js"),
      titlePanel("Zarobki absolwentów - porównanie"),
      plotlyOutput("comparison_plot", height = "600px"),
      DTOutput("table"),
@@ -304,22 +307,42 @@ server <- function(input, output, session) {
       
     })
     
+  observeEvent(input$delete_from_table, {
+    comparison_data(
+      comparison_data() %>%
+        filter(!(kierunek == input$kierunek & 
+                   uczelnia == input$uczelnia & 
+                   poziomforma == input$poziomforma & 
+                   mediana_lata == input$zarobki)) 
+      #poprawione filtorwanie na usuwanie - dodanie filtra na poziomforma i mediana_lata
+    )
+    })
+    
     #tabela - usuwanie danych z porównania
     output$table <- renderDT({
       table_comparison <- comparison_data() %>% 
         select(uczelnia, kierunek, poziomforma, mediana_lata) %>% 
         distinct() %>% 
-        rename("Uczelnia" = uczelnia, "Kierunek" = kierunek, 
-               "Poziom i forma studiów" = poziomforma, 
-               "Mediana zarobków w pierwszym/drugim roku od uzyskania dyplomu" = mediana_lata) %>% 
-        mutate(Akcja =  
-                 paste0('<button class="btn btn-danger btn-sm delete-btn" data-row="', row_number(), '">Usuń</button>'))
+        rename(
+          "Uczelnia" = uczelnia, 
+          "Kierunek" = kierunek, 
+          "Poziom i forma studiów" = poziomforma, 
+          "Mediana zarobków w pierwszym/drugim roku od uzyskania dyplomu" = mediana_lata
+        ) %>% 
+        mutate(Akcja = shinyInput(
+          FUN = actionButton,
+          n = n(), # Use the number of rows dynamically
+          id = "delete_from_table",
+          label = "Usuń",
+          onclick = "Shiny.setInputValue('select_button', this.id, {priority: 'event'})"
+        )) # Add Actions column dynamically
       
       datatable(
         table_comparison,
-        escape = F,
+        escape = FALSE,
+        selection = "none",
         options = list(
-          language = list( #ustawienia językowe dla dt
+          language = list(
             info = "Wyświetlono _START_ do _END_ z _TOTAL_ rekordów",
             infoFiltered = "(odfiltrowano z _MAX_ rekordów)",
             infoEmpty = "Brak rekordów do wyświetlenia",
@@ -330,13 +353,10 @@ server <- function(input, output, session) {
           )
         )
       )
-      
-      
     })
-    
     
 
 }
 
-shinyApp(ui, server)
+shinyApp(ui, server, options = list(launch.browser = TRUE))
 

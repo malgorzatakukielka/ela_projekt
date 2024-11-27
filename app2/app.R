@@ -94,6 +94,7 @@ ui <- page_navbar(
      useShinyjs(),
      titlePanel("Zarobki absolwentów - porównanie"),
      plotlyOutput("comparison_plot", height = "600px"),
+     actionButton("reset_comparison", "Wyczyść porównanie"),
      DTOutput("table"),
      
      ),
@@ -216,10 +217,10 @@ server <- function(input, output, session) {
         mutate(kombinacja = paste(kierunek, uczelnia, poziomforma, mediana_lata, sep = ",\n")) %>%
         distinct(kombinacja)
       
-      if (nrow(unique_combinations) > 10) {
+      if (nrow(unique_combinations) > 7) {
         showModal(modalDialog(
           title = "Ograniczenie liczby porównań",
-          "Maksymalna liczba elementów w porównaniu to 10. Usuń jeden z elementów z porównania, aby dodać nowy.",
+          "Maksymalna liczba elementów w porównaniu to 7. Usuń jeden z elementów z porównania, aby dodać nowy.",
           easyClose = TRUE,
           footer = NULL
         ))
@@ -311,14 +312,17 @@ server <- function(input, output, session) {
       data <- data %>% 
         mutate(kombinacja = paste(kierunek, uczelnia, poziomforma, mediana_lata, sep = ",\n"))
       
-      # Generujemy paletę kolorów dla unikalnych kombinacji
-      hex <- hue_pal()(length(unique(data$kombinacja)))
+      # Paleta kolorów dla unikalnych kombinacji
+      unique_combinations <- unique(data$kombinacja)
+      color_palette <- setNames(hue_pal()(length(unique_combinations)), unique_combinations)
+    
 
         comp_p <- ggplot(data, aes(x = P_ROKDYP, y = srednia, 
                                    color = kombinacja,
                          text = paste("Zarobki:", round(srednia, 2),
                                       "\nKierunek:", kierunek,
                                       "\nUczelnia:", uczelnia,
+                                      "\nPoziom i forma studiów:", poziomforma,
                                       "\nZarobki:", mediana_lata)
                          )) +
           geom_line(aes(group = interaction(kierunek, uczelnia, poziomforma))) +
@@ -327,6 +331,7 @@ server <- function(input, output, session) {
           xlab("Rok uzyskania dyplomu") +
           theme_bw()+
           guides(color=guide_legend(title="Kierunki studiów w porównaniu"))+
+          scale_color_manual(values = color_palette) +
           scale_x_continuous(breaks = c(2015:2022), limits = c(2014.5, 2022.5))
         
         ggplotly(comp_p, tooltip = "text")
@@ -352,23 +357,43 @@ server <- function(input, output, session) {
     })
     
     #tabela - usuwanie danych z porównania
-    output$table <- renderDT({
-      table_comparison <- comparison_data() %>% 
-        select(uczelnia, kierunek, poziomforma, mediana_lata, id) %>% 
-        distinct() %>% 
-        rename(
-          "Uczelnia" = uczelnia, 
-          "Kierunek" = kierunek, 
-          "Poziom i forma studiów" = poziomforma, 
-          "Mediana zarobków w pierwszym/drugim roku od uzyskania dyplomu" = mediana_lata
-        ) %>% 
-        mutate(
-          Akcja = paste0('<button id="delete_from_table_', id, 
-                         '" type="button" class="btn btn-default action-button" 
-                         onclick="Shiny.setInputValue(\'delete_from_table\', 
-                         this.id, {priority: \'event\'})">Usuń</button>')
-        )
-      
+      output$table <- renderDT({
+        data <- comparison_data()
+
+        if (is.null(data) || !is.data.frame(data) || nrow(data) == 0) {
+          # Tworzenie pustej tabeli z nagłówkami, aby wyeliiminować błąd z pustym id z comparison_data
+          table_comparison <- data.frame(
+            uczelnia = character(),
+            kierunek = character(),
+            poziomforma = character(),
+            mediana_lata= character(),
+            id = integer(),
+            Akcja = character()
+          ) %>% 
+            rename(
+              "Uczelnia" = uczelnia, 
+              "Kierunek" = kierunek, 
+              "Poziom i forma studiów" = poziomforma, 
+              "Mediana zarobków w pierwszym/drugim roku od uzyskania dyplomu" = mediana_lata
+            ) 
+        } else {
+          # Tworzenie tabeli z danymi
+          table_comparison <- data %>% 
+            select(uczelnia, kierunek, poziomforma, mediana_lata, id) %>% 
+            distinct() %>% 
+            rename(
+              "Uczelnia" = uczelnia, 
+              "Kierunek" = kierunek, 
+              "Poziom i forma studiów" = poziomforma, 
+              "Mediana zarobków w pierwszym/drugim roku od uzyskania dyplomu" = mediana_lata
+            ) %>% 
+            mutate(
+              Akcja = paste0('<button id="delete_from_table_', id, 
+                             '" type="button" class="btn btn-default action-button" 
+                       onclick="Shiny.setInputValue(\'delete_from_table\', 
+                       this.id, {priority: \'event\'})">Usuń</button>')
+            )
+        }
       
       datatable(
         table_comparison,
@@ -393,8 +418,20 @@ server <- function(input, output, session) {
         )
       )
     })
-    
+      
+  # czyszczenie porównania
+      observeEvent(input$reset_comparison, {
+        comparison_data(data.frame(
+          uczelnia = character(),
+          kierunek = character(),
+          poziomforma = character(),
+          mediana_lata = numeric(),
+          id = character()
+        ))
+      })
 
+
+      
 }
 
 shinyApp(ui, server)

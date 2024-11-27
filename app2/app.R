@@ -9,15 +9,13 @@ library(bslib)
 library(shinyToastify)
 library(DT)
 library(data.table)
+library(scales)
 
 #źródło danych
 ela1 <- read.csv("~/ela_projekt/ela1.csv")
 
 #źródło do slidera
 source("./Rsource/SwitchButton.R")
-
-#źródło do tabeli
-source("./Rsource/shinyInput.R")
 
 #tabela do porównań
 comparison_data <- reactiveVal(data.frame(P_ROKDYP = integer(), 
@@ -212,12 +210,25 @@ server <- function(input, output, session) {
         group_by(uczelnia, kierunek, poziomforma, mediana_lata) %>%
         mutate(id = cur_group_id()) %>%       # Dodanie kolumny id
         ungroup()
+    
+      # Sprawdzenie liczby unikalnych kombinacji
+      unique_combinations <- updated_data %>%
+        mutate(kombinacja = paste(kierunek, uczelnia, poziomforma, mediana_lata, sep = ",\n")) %>%
+        distinct(kombinacja)
       
-      comparison_data(updated_data)
+      if (nrow(unique_combinations) > 10) {
+        showModal(modalDialog(
+          title = "Ograniczenie liczby porównań",
+          "Maksymalna liczba elementów w porównaniu to 10. Usuń jeden z elementów z porównania, aby dodać nowy.",
+          easyClose = TRUE,
+          footer = NULL
+        ))
+      } else {
+        # Aktualizacja comparison_data tylko jeśli limit nie został przekroczony
+        comparison_data(updated_data)
+        
+      }
       
-      # Debug: Wyświetlenie stanu comparison_data po dodaniu
-      print("Stan comparison_data po dodaniu:")
-      print(comparison_data())
     })
     
     #sprawdzenie, czy kierunek jest w comparison_data
@@ -296,9 +307,15 @@ server <- function(input, output, session) {
     output$comparison_plot <- renderPlotly({
       data <- comparison_data()
       
+      #unikalna kombinacja zmiennych
+      data <- data %>% 
+        mutate(kombinacja = paste(kierunek, uczelnia, poziomforma, mediana_lata, sep = ",\n"))
+      
+      # Generujemy paletę kolorów dla unikalnych kombinacji
+      hex <- hue_pal()(length(unique(data$kombinacja)))
 
         comp_p <- ggplot(data, aes(x = P_ROKDYP, y = srednia, 
-                                   color = paste(kierunek, uczelnia, poziomforma, mediana_lata, sep = ",\n"),
+                                   color = kombinacja,
                          text = paste("Zarobki:", round(srednia, 2),
                                       "\nKierunek:", kierunek,
                                       "\nUczelnia:", uczelnia,

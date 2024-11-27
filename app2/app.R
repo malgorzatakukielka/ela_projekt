@@ -206,9 +206,18 @@ server <- function(input, output, session) {
                poziomforma = input$poziomforma, mediana_lata = input$zarobki)
       
       # Dodanie do istniejącej tabeli
+
       current_data <- comparison_data()
-      updated_data <- bind_rows(current_data, dane_do_dodania)
+      updated_data <- bind_rows(current_data, dane_do_dodania) %>%
+        group_by(uczelnia, kierunek, poziomforma, mediana_lata) %>%
+        mutate(id = cur_group_id()) %>%       # Dodanie kolumny id
+        ungroup()
+      
       comparison_data(updated_data)
+      
+      # Debug: Wyświetlenie stanu comparison_data po dodaniu
+      print("Stan comparison_data po dodaniu:")
+      print(comparison_data())
     })
     
     #sprawdzenie, czy kierunek jest w comparison_data
@@ -307,21 +316,28 @@ server <- function(input, output, session) {
       
     })
     
-  observeEvent(input$delete_from_table, {
-    comparison_data(
-      comparison_data() %>%
-        filter(!(kierunek == input$kierunek & 
-                   uczelnia == input$uczelnia & 
-                   poziomforma == input$poziomforma & 
-                   mediana_lata == input$zarobki)) 
-      #poprawione filtorwanie na usuwanie - dodanie filtra na poziomforma i mediana_lata
-    )
+    # Usuwanie wiersza z tabeli
+    observeEvent(input$delete_from_table, {
+      # Wyciągnięcie ID klikniętego przycisku
+      id_to_remove <- input$delete_from_table
+      
+      # Sprawdzenie, czy ID jest poprawne
+      if (grepl("^delete_from_table_", id_to_remove)) {
+        # Uzyskanie numeru wiersza z ID (po usunięciu prefixu)
+        row_id <- as.numeric(sub("delete_from_table_", "", id_to_remove))
+        
+        # Usunięcie wiersza z danych comparison_data
+        comparison_data(
+          comparison_data() %>%
+            filter(id != row_id)  # Filtrowanie danych i usuwanie wiersza o podanym ID
+        )
+      }
     })
     
     #tabela - usuwanie danych z porównania
     output$table <- renderDT({
       table_comparison <- comparison_data() %>% 
-        select(uczelnia, kierunek, poziomforma, mediana_lata) %>% 
+        select(uczelnia, kierunek, poziomforma, mediana_lata, id) %>% 
         distinct() %>% 
         rename(
           "Uczelnia" = uczelnia, 
@@ -329,13 +345,13 @@ server <- function(input, output, session) {
           "Poziom i forma studiów" = poziomforma, 
           "Mediana zarobków w pierwszym/drugim roku od uzyskania dyplomu" = mediana_lata
         ) %>% 
-        mutate(Akcja = shinyInput(
-          FUN = actionButton,
-          n = n(), # Use the number of rows dynamically
-          id = "delete_from_table",
-          label = "Usuń",
-          onclick = "Shiny.setInputValue('select_button', this.id, {priority: 'event'})"
-        )) # Add Actions column dynamically
+        mutate(
+          Akcja = paste0('<button id="delete_from_table_', id, 
+                         '" type="button" class="btn btn-default action-button" 
+                         onclick="Shiny.setInputValue(\'delete_from_table\', 
+                         this.id, {priority: \'event\'})">Usuń</button>')
+        )
+      
       
       datatable(
         table_comparison,
@@ -350,6 +366,12 @@ server <- function(input, output, session) {
             search = "Wyszukaj:",
             lengthMenu = "Pokaż _MENU_ elementów",
             zeroRecords = "Brak danych. Dodaj pierwszy kierunek do porównania."
+          ),
+          columnDefs = list(
+            list(
+              targets = 5, #ukrycie kolumny ID
+              visible = F
+            )
           )
         )
       )
@@ -358,5 +380,5 @@ server <- function(input, output, session) {
 
 }
 
-shinyApp(ui, server, options = list(launch.browser = TRUE))
+shinyApp(ui, server)
 

@@ -401,14 +401,16 @@ server <- function(input, output, session) {
         table_comparison,
         escape = FALSE,
         selection = "none",
-        options = list(
+        options = list( #opcje dla DT
+          searching = F,
+          lengthChange = F,
+          ordering = F,
+          paging = F,
           language = list(
             info = "Wyświetlono _START_ do _END_ z _TOTAL_ rekordów",
             infoFiltered = "(odfiltrowano z _MAX_ rekordów)",
             infoEmpty = "Brak rekordów do wyświetlenia",
             paginate = list(previous = "Poprzednia", `next` = "Następna"),
-            search = "Wyszukaj:",
-            lengthMenu = "Pokaż _MENU_ elementów",
             zeroRecords = "Brak danych. Dodaj pierwszy kierunek do porównania."
           ),
           columnDefs = list(

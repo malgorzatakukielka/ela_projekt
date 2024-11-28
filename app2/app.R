@@ -94,9 +94,11 @@ ui <- page_navbar(
      useShinyjs(),
      titlePanel("Zarobki absolwentów - porównanie"),
      plotlyOutput("comparison_plot", height = "600px"),
-     actionButton("reset_comparison", "Wyczyść porównanie"),
+     div(
+       style = "display: flex; justify-content: flex-end; margin-bottom: 10px;",
+       actionButton("reset_comparison", "Wyczyść porównanie")
+     ),
      DTOutput("table"),
-     
      ),
      )        
     )
@@ -168,7 +170,7 @@ server <- function(input, output, session) {
       geom_line(data = srednia_suma, aes(y = srednia), color = 'black', linewidth = 1) +
       geom_point(data = srednia_suma, 
                  aes(y = srednia, 
-                     text = paste("Średnia ważona:", round(srednia, 2), 
+                     text = paste("Średnia ważona:", round(srednia, 2),"zł" ,
                                   "\nLiczba absolwentów:", suma_P_N)), 
                  color = 'black', size = 3) +
       xlab("Rok uzyskania dyplomu") +
@@ -180,7 +182,7 @@ server <- function(input, output, session) {
       p <- p + geom_line(aes(y = me_zar, group = P_KIERUNEK_ID), color = 'grey') +
         geom_point(aes(y = me_zar,
                        text = paste("Rok:", P_ROKDYP, 
-                                    "\nMediana zarobków:" ,me_zar, 
+                                    "\nMediana zarobków:" ,me_zar,"zł", 
                                     "\nLiczba absolwentów:", P_N,
                                     "\nNazwa kierunku:" ,P_NAZWA_KIERUNKU_PELNA, 
                                     "\nJednostka:", P_NAZWA_JEDN)), 
@@ -319,7 +321,7 @@ server <- function(input, output, session) {
 
         comp_p <- ggplot(data, aes(x = P_ROKDYP, y = srednia, 
                                    color = kombinacja,
-                         text = paste("Zarobki:", round(srednia, 2),
+                         text = paste("Zarobki:", round(srednia, 2),"zł",
                                       "\nKierunek:", kierunek,
                                       "\nUczelnia:", uczelnia,
                                       "\nPoziom i forma studiów:", poziomforma,

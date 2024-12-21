@@ -235,13 +235,33 @@ server <- function(input, output, session) {
             mutate(uczelnia = input$uczelnia, kierunek = input$kierunek, 
                    poziomforma = input$poziomforma, mediana_lata = input$zarobki)
         
-        # Dodanie do istniejącej tabeli
+        # Funkcja do znajdowania najmniejszego dostępnego ID
+        find_smallest_id <- function(data, id_column) {
+          # Pobierz istniejące ID, pomijając NA
+          existing_ids <- data[[id_column]]  # Zakładamy, że id zawsze istnieje w comparison_data()
+          
+          # Generuj sekwencję od 1 do największego istniejącego ID + 1
+          max_id <- if(length(existing_ids) > 0) max(existing_ids) else 0  # Obsługuje przypadek, gdy brak ID
+          all_ids <- seq(1, max_id + 1)
+          
+          # Znajdź najmniejsze ID, które nie jest używane
+          new_id <- min(all_ids[!(all_ids %in% existing_ids)])
+          
+          return(new_id)
+        }
         
-        current_data <- comparison_data()
+        # Dodanie do istniejącej tabeli
+        current_data <- comparison_data()  # Dane, które już zawierają `id`
+        
+        # Zakładając, że dane do dodania mają brakujące `id`
         updated_data <- bind_rows(current_data, dane_do_dodania) %>%
-            group_by(uczelnia, kierunek, poziomforma, mediana_lata) %>%
-            mutate(id = cur_group_id()) %>%       # Dodanie kolumny id
-            ungroup()
+          mutate(id = ifelse(is.na(id), find_smallest_id(current_data, "id"), id))
+        
+        # Wyświetlenie zaktualizowanych danych
+        print(updated_data)
+        
+        # Wyświetlenie zaktualizowanych danych
+        print(updated_data)
         
         # Sprawdzenie liczby unikalnych kombinacji
         unique_combinations <- updated_data %>%

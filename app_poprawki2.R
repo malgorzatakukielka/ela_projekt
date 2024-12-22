@@ -13,11 +13,11 @@ library(scales)
 library(shinyWidgets)
 
 #źródło danych
-ela1 <- read.csv("./data/ela11.csv")
+ela1 <- read.csv("./ela1.csv")
 ela1 <- ela1 %>% drop_na()
 
 #źródło do slidera
-source("./Rsource/SwitchButton.R")
+source("./app2/Rsource/SwitchButton.R")
 
 #tabela do porównań
 comparison_data <- reactiveVal(data.frame(P_ROKDYP = integer(), 
@@ -253,7 +253,7 @@ server <- function(input, output, session) {
         # Dodanie ID do nowych wierszy w danych do dodania
         dane_do_dodania_z_id <- add_ids_to_new_rows(dane_do_dodania, current_data)
         updated_data <- bind_rows(current_data, dane_do_dodania_z_id)
-        print(updated_data) #debug
+
         
         # Sprawdzenie liczby unikalnych kombinacji
         unique_combinations <- updated_data %>%
@@ -352,47 +352,46 @@ server <- function(input, output, session) {
     
     #output drugiego okna
     output$comparison_plot <- renderPlotly({
-        data <- comparison_data()
-               
-        # Wektor kolorów
-        kolory <- c("#F8766D", "#C49A00", "#53B400", "#00C094", "#00B6EB", "#A58AFF", "#FB61D7")
-        
-        # Tworzymy wektor kolorów tylko dla istniejących id
-        kolory_dla_id <- kolory[data$id]
-        
-        # Przypisanie kolorów do tabeli
-        data$kolor <- kolory_dla_id
-        
-        #unikalna kombinacja zmiennych
-        data <- data %>% 
-            mutate(kombinacja = paste(kierunek, uczelnia, poziomforma, mediana_lata, sep = ",\n"))
-        
-        # Paleta kolorów dla unikalnych kombinacji
-        unique_combinations <- unique(data$kombinacja)
-        color_palette <- setNames(hue_pal()(length(unique_combinations)), unique_combinations)
-        
-        
-        comp_p <- ggplot(data, aes(x = P_ROKDYP, y = srednia, 
-                                   color = kombinacja,
-                                   text = paste("Zarobki:", round(srednia, 2),"zł",
-                                                "\nKierunek:", kierunek,
-                                                "\nUczelnia:", uczelnia,
-                                                "\nPoziom i forma studiów:", poziomforma,
-                                                "\nZarobki:", mediana_lata)
-        )) +
-            geom_line(aes(group = interaction(kierunek, uczelnia, poziomforma))) +
-            geom_point() +
-            ylab("Mediana zarobków")+
-            xlab("Rok uzyskania dyplomu") +
-            theme_bw()+
-            guides(color=guide_legend(title="Kierunki studiów w porównaniu"))+
-            scale_color_manual(values = kolory) +
-            scale_x_continuous(breaks = c(2015:2022), limits = c(2014.5, 2022.5))
-        
-        ggplotly(comp_p, tooltip = "text")
-        
+      data <- comparison_data()
+      
+      # Statyczna mapa kolorów przypisana do id
+      kolor_map <- c("1" = "#F8766D", "2" = "#C49A00", "3" = "#53B400", 
+                     "4" = "#00C094", "5" = "#00B6EB", "6" = "#A58AFF", 
+                     "7" = "#FB61D7")
+      
+      # Przypisanie kolorów na podstawie id
+      data$kolor <- kolor_map[as.character(data$id)]
+      
+      # Unikalna kombinacja zmiennych
+      data <- data %>% 
+        mutate(kombinacja = paste(kierunek, uczelnia, poziomforma, mediana_lata, sep = ",\n"))
+      
+      # Przypisanie kolorów do kombinacji (wyświetlanej w legendzie)
+      unique_combinations <- unique(data$kombinacja)
+      color_palette <- setNames(kolor_map[unique(data$id)], unique_combinations)
+      
+      comp_p <- ggplot(data, aes(x = P_ROKDYP, y = srednia, 
+                                 color = kombinacja,  # Użyj kombinacji jako mapowania kolorów
+                                 text = paste("Zarobki:", round(srednia, 2), "zł",
+                                              "\nKierunek:", kierunek,
+                                              "\nUczelnia:", uczelnia,
+                                              "\nPoziom i forma studiów:", poziomforma,
+                                              "\nZarobki:", mediana_lata)
+      )) +
+        geom_line(aes(group = interaction(kierunek, uczelnia, poziomforma))) +
+        geom_point() +
+        ylab("Mediana zarobków")+
+        xlab("Rok uzyskania dyplomu") +
+        theme_bw() +
+        guides(color = guide_legend(title = "Kierunki studiów w porównaniu")) +
+        scale_color_manual(values = color_palette) +  # Użyj mapy kolorów dla kombinacji
+        scale_x_continuous(breaks = c(2015:2022), limits = c(2014.5, 2022.5))
+      
+      ggplotly(comp_p, tooltip = "text")
     })
+
     
+        
     # Usuwanie wiersza z tabeli
     observeEvent(input$delete_from_table, {
         # Wyciągnięcie ID klikniętego przycisku
@@ -482,8 +481,7 @@ server <- function(input, output, session) {
             uczelnia = character(),
             kierunek = character(),
             poziomforma = character(),
-            mediana_lata = character(),
-            id = character()
+            mediana_lata = character()
         ))
     })
     

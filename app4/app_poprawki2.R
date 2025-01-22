@@ -59,8 +59,12 @@ ui <- page_navbar(
                                           liveSearch = TRUE
                                       )),
 
-                          radioButtons("zarobki", "Zarobki", choices = unique(ela1$p)),
-                          # textOutput("test"),
+                          pickerInput("zmienna", "Wybierz zmienną do analizy:", 
+                                      choices = c("", unique(ela1$zmienna)),
+                                      options = pickerOptions(
+                                        noneSelectedText = "Brak wyboru",
+                                        liveSearch = TRUE
+                                      )),
                           
                           #slider
                           sliderInput("lata", "Wybierz lata:", 
@@ -120,9 +124,6 @@ ui <- page_navbar(
 
 server <- function(input, output, session) {
     
-    # output$test <- renderText({input$poziomforma})
-    
-    
     
     observeEvent(input$uczelnia, {
         updateSelectInput(session, "kierunek", selected = NULL)
@@ -177,18 +178,23 @@ server <- function(input, output, session) {
             filter(P_NAZWA_UCZELNI == input$uczelnia,
                    P_KIERUNEK_NAZWA == input$kierunek,
                    P_POZIOMFORMA == input$poziomforma,
-                   p == input$zarobki) %>%
+                   zmienna == input$zmienna) %>%
             mutate(P_NAZWA_JEDN = ifelse(P_NAZWA_JEDN == "", 
                                          "Jednostka niesprecyzowana", 
                                          P_NAZWA_JEDN)) %>%
-            select(P_ROKDYP, me_zar, P_NAZWA_JEDN, P_N, P_KIERUNEK_ID, P_NAZWA_KIERUNKU_PELNA)
+            select(P_ROKDYP, zmienna, wartosc,  P_NAZWA_JEDN, P_N, P_KIERUNEK_ID, P_NAZWA_KIERUNKU_PELNA)
         
-        # Obliczenie średniej ważonej dla mediany zarobków 
+        # Obliczenie średniej ważonej
+        
         srednia_suma <- dane_do_wykresu %>%
-            group_by(P_ROKDYP) %>% 
-            summarise(srednia = sum(P_N * me_zar) / sum(P_N), suma_P_N = sum(P_N))
+            filter(zmienna == input$zmienna) %>% 
+            group_by(P_ROKDYP) %>%
+            summarise(
+              srednia = sum(P_N * wartosc, na.rm = TRUE) / sum(P_N, na.rm = TRUE), # Średnia ważona
+              suma_P_N = sum(P_N, na.rm = TRUE)                                   # Suma liczebności
+            )
         
-        #nowy wykres
+        #wykres 
         p <- dane_do_wykresu %>% 
             ggplot(aes(x = P_ROKDYP)) +
             geom_line(data = srednia_suma, aes(y = srednia), color = 'black', linewidth = 1) +
@@ -198,19 +204,43 @@ server <- function(input, output, session) {
                                         "\nLiczba absolwentów:", suma_P_N)), 
                        color = 'black', size = 3) +
             xlab("Rok uzyskania dyplomu") +
-            ylab("Mediana zarobków") +
+          ylab(case_when(
+            input$zmienna %in% c("Mediana zarobków w pierwszym roku od uzyskania dyplomu",
+                                 "Mediana zarobków w drugim roku od uzyskania dyplomu",
+                                 "Mediana zarobków w trzecim roku od uzyskania dyplomu",
+                                 "Mediana zarobków w czwartym roku od uzyskania dyplomu",
+                                 "Mediana zarobków w piątym roku od uzyskania dyplomu") ~ "Mediana zarobków (zł)",
+            input$zmienna == "Średni czas (w miesiącach) od uzyskania dyplomu do podjęcia pierwszej pracy po uzyskaniu dyplomu" ~ "Średni czas poszukiwania pracy (miesiące)",
+            input$zmienna == "Odsetek absolwentów z doświadczeniem bezrobocia po uzyskaniu dyplomu" ~ "Odsetek z doświadczeniem bezrobocia (%)",
+            input$zmienna == "Względny Wskaźnik Zarobków absolwentów po uzyskaniu dyplomu" ~ "Względny Wskaźnik Zarobków (WWZ)",
+            input$zmienna == "Względny Wskaźnik Bezrobocia absolwentów po uzyskaniu dyplomu" ~ "Względny Wskaźnik Bezrobocia (WWB)",
+            TRUE ~ "Wartość wskaźnika"
+          )) +
             scale_x_continuous(breaks = c(2015:2022), limits = c(min(input$lata)-0.5, max(input$lata)+0.5))+
             theme_bw()
         
         if (input$on_off) {
-            p <- p + geom_line(aes(y = me_zar, group = P_KIERUNEK_ID), color = 'grey') +
-                geom_point(aes(y = me_zar,
-                               text = paste("Rok:", P_ROKDYP, 
-                                            "\nMediana zarobków:" ,me_zar,"zł", 
-                                            "\nLiczba absolwentów:", P_N,
-                                            "\nNazwa kierunku:" ,P_NAZWA_KIERUNKU_PELNA, 
-                                            "\nJednostka:", P_NAZWA_JEDN)), 
-                           color = 'grey')
+          p <- p + geom_line(aes(y = wartosc, group = P_KIERUNEK_ID), color = 'grey') +
+            geom_point(aes(y = wartosc,
+                           text = paste(
+                             "Rok:", P_ROKDYP,
+                             case_when(
+                               input$zmienna %in% c("Mediana zarobków w pierwszym roku od uzyskania dyplomu",
+                                                    "Mediana zarobków w drugim roku od uzyskania dyplomu",
+                                                    "Mediana zarobków w trzecim roku od uzyskania dyplomu",
+                                                    "Mediana zarobków w czwartym roku od uzyskania dyplomu",
+                                                    "Mediana zarobków w piątym roku od uzyskania dyplomu") ~ paste("\nMediana:", wartosc, "zł"),
+                               input$zmienna == "Średni czas (w miesiącach) od uzyskania dyplomu do podjęcia pierwszej pracy po uzyskaniu dyplomu" ~ paste("\nŚredni czas poszukiwania pierwszej pracy:", wartosc, "mies."),
+                               input$zmienna == "Odsetek absolwentów z doświadczeniem bezrobocia po uzyskaniu dyplomu" ~ paste("\nOdsetek z doświadczeniem bezrobocia:", wartosc, "%"),
+                               input$zmienna == "Względny Wskaźnik Zarobków absolwentów po uzyskaniu dyplomu" ~ paste("\nWWZ:", wartosc ),
+                               input$zmienna == "Względny Wskaźnik Bezrobocia absolwentów po uzyskaniu dyplomu" ~ paste("\nWWB:", wartosc),
+                               TRUE ~ paste("\nWartość wskaźnika:", wartosc)
+                             ),
+                             "\nLiczba absolwentów:", P_N,
+                             "\nNazwa kierunku:", P_NAZWA_KIERUNKU_PELNA,
+                             "\nJednostka:", P_NAZWA_JEDN
+                           )),
+                       color = 'grey')
         }
         
         ggplotly(p, tooltip = "text")
@@ -270,6 +300,7 @@ server <- function(input, output, session) {
         } else {
             # Aktualizacja comparison_data tylko jeśli limit nie został przekroczony
             comparison_data(updated_data)
+            print(comparison_data)
             
             # kod okna przeniesiony
             showToast(

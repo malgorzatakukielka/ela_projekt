@@ -11,6 +11,7 @@ library(DT)
 library(data.table)
 library(scales)
 library(shinyWidgets)
+library(bsicons)
 
 #źródło danych 
 ela1 <- read.csv("~/ela_projekt/ela1.csv")
@@ -59,7 +60,22 @@ ui <- page_navbar(
                                           liveSearch = TRUE
                                       )),
                           #Analizowane zmienne
-                          pickerInput("zmienna", "Wybierz zmienną do analizy:", 
+                          tags$div(
+                            style = "display: flex; align-items: center; gap: 8px;", # Użycie gap dla odstępu
+                            tags$span("Wybierz zmienną do analizy:"), # Tytuł pickera
+                            tooltip(
+                              bsicons::bs_icon("info-circle", style = "cursor: pointer;"),
+                              HTML(
+                                "<b>Względny Wskaźnik Zarobków (WWZ)</b>, 
+                                to stosunek średnich zarobków absolwenta 
+                                do średnich zarobków w jego powiecie zamieszkania.<br>
+                                <b>Względny Wskaźnik Bezrobocia (WWB)</b>, 
+                                to stosunek ryzyka bezrobocia absolwenta 
+                                do stopy bezrobocia w jego powiecie zamieszkania."
+                              )
+                            )
+                          ),
+                          pickerInput("zmienna", 
                                       choices = unique(ela1$zmienna),
                                       options = pickerOptions(
                                         noneSelectedText = "Brak wyboru",
@@ -197,7 +213,7 @@ server <- function(input, output, session) {
             filter(zmienna == input$zmienna) %>% 
             group_by(P_ROKDYP) %>%
             summarise(
-              srednia = sum(P_N * wartosc, na.rm = TRUE) / sum(P_N, na.rm = TRUE), # Średnia ważona
+              srednia = round(sum(P_N * wartosc, na.rm = TRUE) / sum(P_N, na.rm = TRUE), 2), # Średnia ważona
               suma_P_N = sum(P_N, na.rm = TRUE)                                   # Suma liczebności
             )
         
@@ -207,7 +223,19 @@ server <- function(input, output, session) {
             geom_line(data = srednia_suma, aes(y = srednia), color = 'black', linewidth = 1) +
             geom_point(data = srednia_suma, 
                        aes(y = srednia, 
-                           text = paste("Średnia ważona:", round(srednia, 2),"zł" ,
+                           text = paste(
+                                        case_when(
+                                          input$zmienna %in% c("Mediana zarobków w pierwszym roku od uzyskania dyplomu",
+                                                               "Mediana zarobków w drugim roku od uzyskania dyplomu",
+                                                               "Mediana zarobków w trzecim roku od uzyskania dyplomu",
+                                                               "Mediana zarobków w czwartym roku od uzyskania dyplomu",
+                                                               "Mediana zarobków w piątym roku od uzyskania dyplomu") ~ paste("Średnia ważona::", srednia, "zł"),
+                                          input$zmienna == "Średni czas (w miesiącach) od uzyskania dyplomu do podjęcia pierwszej pracy po uzyskaniu dyplomu" ~ paste("Średnia ważona:", srednia, "mies."),
+                                          input$zmienna == "Odsetek absolwentów z doświadczeniem bezrobocia po uzyskaniu dyplomu" ~ paste("Średnia ważona:", srednia, "%"),
+                                          input$zmienna == "Względny Wskaźnik Zarobków absolwentów po uzyskaniu dyplomu" ~ paste("Średnia ważona:", srednia ),
+                                          input$zmienna == "Względny Wskaźnik Bezrobocia absolwentów po uzyskaniu dyplomu" ~ paste("Średnia ważona:", srednia),
+                                          TRUE ~ paste("\nWartość wskaźnika:", srednia)
+                                        ),
                                         "\nLiczba absolwentów:", suma_P_N)), 
                        color = 'black', size = 3) +
             xlab("Rok uzyskania dyplomu") +

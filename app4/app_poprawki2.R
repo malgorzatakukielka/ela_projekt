@@ -12,7 +12,7 @@ library(data.table)
 library(scales)
 library(shinyWidgets)
 
-#źródło danych
+#źródło danych 
 ela1 <- read.csv("~/ela_projekt/ela1.csv")
 ela1 <- ela1 %>% drop_na()
 
@@ -25,17 +25,17 @@ comparison_data <- reactiveVal(data.frame(P_ROKDYP = integer(),
                                           uczelnia = character(), 
                                           kierunek = character(), 
                                           poziomforma = character(),
-                                          mediana_lata = character()
+                                          zmienna = character()
 ))
 
 ui <- page_navbar(
     title = "Ekonomiczne Losy Absolwentów",
     nav_panel( #1. zakładka aplikacji
-        title = "Zarobki absolwentów",
+        title = "Statystyki absolwentów", #zmiana na Statystyki
         fluidPage(theme = "button.css",
                   useShinyjs(),
                   useShinyToastify(),
-                  titlePanel("Zarobki absolwentów"),
+                  titlePanel("Statystyki absolwentów"), # zmiana na Statystyki
                   sidebarLayout( 
                     sidebarPanel(
                           pickerInput("uczelnia", "Wybierz uczelnię:", 
@@ -58,9 +58,9 @@ ui <- page_navbar(
                                           noneSelectedText = "Brak wyboru",
                                           liveSearch = TRUE
                                       )),
-
+                          #Analizowane zmienne
                           pickerInput("zmienna", "Wybierz zmienną do analizy:", 
-                                      choices = c("", unique(ela1$zmienna)),
+                                      choices = unique(ela1$zmienna),
                                       options = pickerOptions(
                                         noneSelectedText = "Brak wyboru",
                                         liveSearch = TRUE
@@ -108,7 +108,14 @@ ui <- page_navbar(
         title = "Porównanie",
         fluidPage(
             useShinyjs(),
-            titlePanel("Zarobki absolwentów - porównanie"),
+            titlePanel("Statystyki absolwentów - porównanie"), #zmiana na Statystyki
+            pickerInput("zmienna2", "Wybierz zmienną do analizy:", 
+                        choices = unique(ela1$zmienna),
+                        width = "auto",
+                        options = pickerOptions(
+                          noneSelectedText = "Brak wyboru",
+                          liveSearch = TRUE
+                        )),
             plotlyOutput("comparison_plot", height = "600px"),
             div(
                 style = "display: flex; justify-content: flex-end; margin-bottom: 10px;",
@@ -250,15 +257,20 @@ server <- function(input, output, session) {
     observeEvent(input$add_to_comparison, {
         req(input$poziomforma)
         
-        dane_do_dodania <- ela1 %>%
-            filter(P_NAZWA_UCZELNI == input$uczelnia,
-                   P_KIERUNEK_NAZWA == input$kierunek,
-                   P_POZIOMFORMA == input$poziomforma,
-                   p == input$zarobki) %>%
-            group_by(P_ROKDYP) %>%
-            summarise(srednia = sum(P_N * me_zar) / sum(P_N)) %>%
-            mutate(uczelnia = input$uczelnia, kierunek = input$kierunek, 
-                   poziomforma = input$poziomforma, mediana_lata = input$zarobki)
+      dane_do_dodania <- ela1 %>%
+        filter(P_NAZWA_UCZELNI == input$uczelnia,
+               P_KIERUNEK_NAZWA == input$kierunek,
+               P_POZIOMFORMA == input$poziomforma) %>% # Filtrowanie tylko po uczelni, kierunku i formie
+        group_by(P_ROKDYP, zmienna) %>% # Grupowanie zarówno po roku dyplomu, jak i zmiennej
+        summarise(
+          srednia = round(sum(P_N * wartosc, na.rm = TRUE) / sum(P_N, na.rm = TRUE), 2), # Średnia ważona dla każdej zmiennej
+          suma_P_N = sum(P_N, na.rm = TRUE) # Suma liczebności dla każdej zmiennej
+        ) %>%
+        mutate(
+          uczelnia = input$uczelnia,
+          kierunek = input$kierunek,
+          poziomforma = input$poziomforma
+        )
         
         # Dodanie do istniejącej tabeli
         current_data <- comparison_data()
@@ -287,7 +299,7 @@ server <- function(input, output, session) {
         
         # Sprawdzenie liczby unikalnych kombinacji
         unique_combinations <- updated_data %>%
-            mutate(kombinacja = paste(kierunek, uczelnia, poziomforma, mediana_lata, sep = ",\n")) %>%
+            mutate(kombinacja = paste(kierunek, uczelnia, poziomforma, sep = ",\n")) %>%
             distinct(kombinacja)
         
         if (nrow(unique_combinations) > 7) {
@@ -324,8 +336,7 @@ server <- function(input, output, session) {
         any(
             comparison_data()$kierunek == input$kierunek & 
                 comparison_data()$uczelnia == input$uczelnia &
-                comparison_data()$poziomforma == input$poziomforma &
-                comparison_data()$mediana_lata == input$zarobki
+                comparison_data()$poziomforma == input$poziomforma
         )
     })
     #Kod do logiki dodaj/usuń
@@ -338,9 +349,8 @@ server <- function(input, output, session) {
             comparison_data() %>%
                 filter(!(kierunek == input$kierunek & 
                              uczelnia == input$uczelnia & 
-                             poziomforma == input$poziomforma & 
-                             mediana_lata == input$zarobki)) 
-            #poprawione filtorwanie na usuwanie - dodanie filtra na poziomforma i mediana_lata
+                             poziomforma == input$poziomforma)) 
+            #poprawione filtorwanie na usuwanie - dodanie filtra na poziomforma - usunięcie mediana_lata
         )
     })
     
@@ -395,30 +405,66 @@ server <- function(input, output, session) {
       
       # Unikalna kombinacja zmiennych
       data <- data %>% 
-        mutate(kombinacja = paste(kierunek, uczelnia, poziomforma, mediana_lata, sep = ",\n"))
+        mutate(kombinacja = paste(kierunek, uczelnia, poziomforma, sep = ",\n"))
       
       # Przypisanie kolorów do kombinacji (wyświetlanej w legendzie)
       unique_combinations <- unique(data$kombinacja)
       color_palette <- setNames(kolor_map[unique(data$id)], unique_combinations)
       
-      comp_p <- ggplot(data, aes(x = P_ROKDYP, y = srednia, 
-                                 color = kombinacja,  # Użyj kombinacji jako mapowania kolorów
-                                 text = paste("Zarobki:", round(srednia, 2), "zł",
-                                              "\nKierunek:", kierunek,
-                                              "\nUczelnia:", uczelnia,
-                                              "\nPoziom i forma studiów:", poziomforma,
-                                              "\nZarobki:", mediana_lata)
+      # Generowanie danych na podstawie input$zmienna2
+      data_zmienna <- data %>%
+        filter(zmienna == input$zmienna2) # Filtrowanie danych dla wybranej zmiennej
+        
+      
+      # Tworzenie wykresu
+      comp_p <- ggplot(data_zmienna, aes(
+        x = P_ROKDYP,
+        y = srednia,
+        color = kombinacja,  # kombinacja jako mapowania kolorów
+        text = paste(
+          "Rok dyplomu:", P_ROKDYP,
+          "\nKierunek:", kierunek,
+          "\nUczelnia:", uczelnia,
+          "\nPoziom i forma studiów:", poziomforma,
+          case_when(
+            input$zmienna2 %in% c("Mediana zarobków w pierwszym roku od uzyskania dyplomu",
+                                 "Mediana zarobków w drugim roku od uzyskania dyplomu",
+                                 "Mediana zarobków w trzecim roku od uzyskania dyplomu",
+                                 "Mediana zarobków w czwartym roku od uzyskania dyplomu",
+                                 "Mediana zarobków w piątym roku od uzyskania dyplomu") ~ paste("\nZarobki:", srednia, "zł"),
+            input$zmienna2 == "Średni czas (w miesiącach) od uzyskania dyplomu do podjęcia pierwszej pracy po uzyskaniu dyplomu" ~ paste("\nŚredni czas poszukiwania pierwszej pracy:", srednia, "mies."),
+            input$zmienna2 == "Odsetek absolwentów z doświadczeniem bezrobocia po uzyskaniu dyplomu" ~ paste("\nOdsetek z doświadczeniem bezrobocia:", srednia, "%"),
+            input$zmienna2 == "Względny Wskaźnik Zarobków absolwentów po uzyskaniu dyplomu" ~ paste("\nWWZ:", srednia ),
+            input$zmienna2 == "Względny Wskaźnik Bezrobocia absolwentów po uzyskaniu dyplomu" ~ paste("\nWWB:", srednia),
+            TRUE ~ paste("\nWartość wskaźnika:", srednia)
+          )
+        )
       )) +
         geom_line(aes(group = interaction(kierunek, uczelnia, poziomforma))) +
         geom_point() +
-        ylab("Mediana zarobków")+
+        ylab(case_when(
+          input$zmienna2 %in% c("Mediana zarobków w pierwszym roku od uzyskania dyplomu",
+                               "Mediana zarobków w drugim roku od uzyskania dyplomu",
+                               "Mediana zarobków w trzecim roku od uzyskania dyplomu",
+                               "Mediana zarobków w czwartym roku od uzyskania dyplomu",
+                               "Mediana zarobków w piątym roku od uzyskania dyplomu") ~ "Mediana zarobków (zł)",
+          input$zmienna2 == "Średni czas (w miesiącach) od uzyskania dyplomu do podjęcia pierwszej pracy po uzyskaniu dyplomu" ~ "Średni czas poszukiwania pracy (miesiące)",
+          input$zmienna2 == "Odsetek absolwentów z doświadczeniem bezrobocia po uzyskaniu dyplomu" ~ "Odsetek z doświadczeniem bezrobocia (%)",
+          input$zmienna2 == "Względny Wskaźnik Zarobków absolwentów po uzyskaniu dyplomu" ~ "Względny Wskaźnik Zarobków (WWZ)",
+          input$zmienna2 == "Względny Wskaźnik Bezrobocia absolwentów po uzyskaniu dyplomu" ~ "Względny Wskaźnik Bezrobocia (WWB)",
+          TRUE ~ "Wartość wskaźnika"
+        )) +
         xlab("Rok uzyskania dyplomu") +
         theme_bw() +
         guides(color = guide_legend(title = "Kierunki studiów w porównaniu")) +
-        scale_color_manual(values = color_palette) + 
+        scale_color_manual(values = color_palette) +
         scale_x_continuous(breaks = c(2015:2022), limits = c(2014.5, 2022.5))
       
+      # Przekonwertowanie do wykresu interaktywnego
       ggplotly(comp_p, tooltip = "text")
+
+# Przekonwertowanie do wykresu interaktywnego
+ggplotly(comp_p, tooltip = "text")
     })
 
     
@@ -447,30 +493,28 @@ server <- function(input, output, session) {
         
         if (is.null(data) || !is.data.frame(data) || nrow(data) == 0) {
             # Tworzenie pustej tabeli z nagłówkami, aby wyeliiminować błąd z pustym id z comparison_data
+            # usunięcie mediana_lata
             table_comparison <- data.frame(
                 uczelnia = character(),
                 kierunek = character(),
                 poziomforma = character(),
-                mediana_lata= character(),
                 id = integer(),
                 Akcja = character()
             ) %>% 
                 rename(
                     "Uczelnia" = uczelnia, 
                     "Kierunek" = kierunek, 
-                    "Poziom i forma studiów" = poziomforma, 
-                    "Mediana zarobków w pierwszym/drugim roku od uzyskania dyplomu" = mediana_lata
+                    "Poziom i forma studiów" = poziomforma 
                 ) 
         } else {
-            # Tworzenie tabeli z danymi
+            # Tworzenie tabeli z danymi, usunięcie mediana_lata
             table_comparison <- data %>% 
-                select(uczelnia, kierunek, poziomforma, mediana_lata, id) %>% 
+                select(uczelnia, kierunek, poziomforma, id) %>% 
                 distinct() %>% 
                 rename(
                     "Uczelnia" = uczelnia, 
                     "Kierunek" = kierunek, 
-                    "Poziom i forma studiów" = poziomforma, 
-                    "Mediana zarobków w pierwszym/drugim roku od uzyskania dyplomu" = mediana_lata
+                    "Poziom i forma studiów" = poziomforma
                 ) %>% 
                 mutate(
                     Akcja = paste0('<button id="delete_from_table_', id, 
@@ -498,7 +542,7 @@ server <- function(input, output, session) {
                 ),
                 columnDefs = list(
                     list(
-                        targets = 5, #ukrycie kolumny ID
+                        targets = 4, #ukrycie kolumny ID
                         visible = F
                     )
                 )
@@ -512,7 +556,7 @@ server <- function(input, output, session) {
             uczelnia = character(),
             kierunek = character(),
             poziomforma = character(),
-            mediana_lata = character()
+            zmienna = character()
         ))
     })
     

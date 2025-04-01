@@ -15,7 +15,9 @@ library(bsicons)
 
 #źródło danych 
 ela1 <- read.csv("~/ela_projekt/ela1.csv")
-ela1 <- ela1 %>% drop_na()
+ela1 <- ela1 %>% 
+  pivot_longer(cols = 10:23, names_to = "zmienna", values_to = "wartosc") %>% 
+  drop_na()
 
 #źródło do slidera
 source("./Rsource/SwitchButton.R")
@@ -28,6 +30,55 @@ comparison_data <- reactiveVal(data.frame(P_ROKDYP = integer(),
                                           poziomforma = character(),
                                           zmienna = character()
 ))
+
+#unikalne wartości zmiennych z ela1$zmienna
+unikalne_zmienne <- unique(ela1$zmienna)
+
+#funkcja mapowania nazw zmiennych ela1$zmienna
+przeksztalc_nazwe <- function(skrot) {
+  if (grepl("^P_E_ZAR_P[1-5]$", skrot)) {
+    rok <- substr(skrot, 10, 10)
+    return(paste("Średnie miesięczne wynagrodzenie absolwentów w", 
+                 ifelse(rok == "1", "pierwszym", 
+                        ifelse(rok == "2", "drugim", 
+                               ifelse(rok == "3", "trzecim", 
+                                      ifelse(rok == "4", "czwartym", "piątym")))), 
+                 "roku po uzyskaniu dyplomu"))
+  } 
+  
+  if (grepl("^P_ME_ZAR_P[1-5]$", skrot)) {
+    rok <- substr(skrot, 11, 11)
+    return(paste("Mediana średnich miesięcznych wynagrodzeń absolwentów w", 
+                 ifelse(rok == "1", "pierwszym", 
+                        ifelse(rok == "2", "drugim", 
+                               ifelse(rok == "3", "trzecim", 
+                                      ifelse(rok == "4", "czwartym", "piątym")))), 
+                 "roku po uzyskaniu dyplomu"))
+  }
+  if (skrot == "P_CZAS_PRACA") {
+    return("Średni czas (w miesiącach) od uzyskania dyplomu do podjęcia pierwszej pracy po uzyskaniu dyplomu")
+  }
+  
+  if(skrot == "P_CZY_BEZR") {
+    return("Odsetek absolwentów z doświadczeniem bezrobocia po uzyskaniu dyplomu")
+  }
+  if(skrot == "P_WWZ") {
+    return("Względny Wskaźnik Zarobków absolwentów po uzyskaniu dyplomu")
+  }
+  if(skrot == "P_WWB") {
+    return("Względny Wskaźnik Bezrobocia absolwentów po uzyskaniu dyplomu")
+  }
+  
+  return(skrot)
+} # jeśli nie pasuje do wzorca, zwraca oryginalną wartość
+
+#ramka danych z mapowaniem skrótów
+mapowanie_zmiennych <- data.frame(
+  skrot = unikalne_zmienne,
+  pelna_nazwa = sapply(unikalne_zmienne, przeksztalc_nazwe),
+  stringsAsFactors = FALSE
+)
+
 
 ui <- page_navbar(
     title = "Ekonomiczne Losy Absolwentów",
@@ -76,7 +127,9 @@ ui <- page_navbar(
                             )
                           ),
                           pickerInput("zmienna", 
-                                      choices = unique(ela1$zmienna),
+                                      choices = setNames(mapowanie_zmiennych$skrot, 
+                                                         mapowanie_zmiennych$pelna_nazwa),
+                                      selected = NULL,
                                       options = pickerOptions(
                                         noneSelectedText = "Brak wyboru",
                                         liveSearch = TRUE
@@ -126,7 +179,8 @@ ui <- page_navbar(
             useShinyjs(),
             titlePanel("Statystyki absolwentów - porównanie"), #zmiana na Statystyki
             pickerInput("zmienna2", "Wybierz zmienną do analizy:", 
-                        choices = unique(ela1$zmienna),
+                                      choices = setNames(mapowanie_zmiennych$skrot, 
+                                                         mapowanie_zmiennych$pelna_nazwa),
                         width = "auto",
                         options = pickerOptions(
                           noneSelectedText = "Brak wyboru",
@@ -217,42 +271,41 @@ server <- function(input, output, session) {
               suma_P_N = sum(P_N, na.rm = TRUE)                                   # Suma liczebności
             )
         
-        #wykres 
+        # Pobranie pełnej nazwy zmiennej na podstawie skrótu
+        nazwa_pelna <- mapowanie_zmiennych$pelna_nazwa[mapowanie_zmiennych$skrot == input$zmienna]
+        
+        # Definicja etykiet Y-osi
+        etykieta_y <- case_when(
+          input$zmienna %in% mapowanie_zmiennych$skrot[grepl("^P_ME_ZAR_P[1-5]$", mapowanie_zmiennych$skrot)] ~ "Mediana zarobków (zł)",
+          input$zmienna %in% mapowanie_zmiennych$skrot[grepl("^P_E_ZAR_P[1-5]$", mapowanie_zmiennych$skrot)] ~ "Średnie zarobki (zł)",
+          input$zmienna == "P_CZAS_PRACA" ~ "Średni czas poszukiwania pracy (miesiące)",
+          input$zmienna == "P_CZY_BEZR" ~ "Odsetek z doświadczeniem bezrobocia (%)",
+          input$zmienna == "P_WWZ" ~ "Względny Wskaźnik Zarobków (WWZ)",
+          input$zmienna == "P_WWB" ~ "Względny Wskaźnik Bezrobocia (WWB)",
+          TRUE ~ "Wartość wskaźnika"
+        )
+        
+        # Tworzenie wykresu
         p <- dane_do_wykresu %>% 
-            ggplot(aes(x = P_ROKDYP)) +
-            geom_line(data = srednia_suma, aes(y = srednia), color = 'black', linewidth = 1) +
-            geom_point(data = srednia_suma, 
-                       aes(y = srednia, 
-                           text = paste(
-                                        case_when(
-                                          input$zmienna %in% c("Mediana zarobków w pierwszym roku od uzyskania dyplomu",
-                                                               "Mediana zarobków w drugim roku od uzyskania dyplomu",
-                                                               "Mediana zarobków w trzecim roku od uzyskania dyplomu",
-                                                               "Mediana zarobków w czwartym roku od uzyskania dyplomu",
-                                                               "Mediana zarobków w piątym roku od uzyskania dyplomu") ~ paste("Średnia ważona::", srednia, "zł"),
-                                          input$zmienna == "Średni czas (w miesiącach) od uzyskania dyplomu do podjęcia pierwszej pracy po uzyskaniu dyplomu" ~ paste("Średnia ważona:", srednia, "mies."),
-                                          input$zmienna == "Odsetek absolwentów z doświadczeniem bezrobocia po uzyskaniu dyplomu" ~ paste("Średnia ważona:", srednia, "%"),
-                                          input$zmienna == "Względny Wskaźnik Zarobków absolwentów po uzyskaniu dyplomu" ~ paste("Średnia ważona:", srednia ),
-                                          input$zmienna == "Względny Wskaźnik Bezrobocia absolwentów po uzyskaniu dyplomu" ~ paste("Średnia ważona:", srednia),
-                                          TRUE ~ paste("\nWartość wskaźnika:", srednia)
-                                        ),
-                                        "\nLiczba absolwentów:", suma_P_N)), 
-                       color = 'black', size = 3) +
-            xlab("Rok uzyskania dyplomu") +
-          ylab(case_when(
-            input$zmienna %in% c("Mediana zarobków w pierwszym roku od uzyskania dyplomu",
-                                 "Mediana zarobków w drugim roku od uzyskania dyplomu",
-                                 "Mediana zarobków w trzecim roku od uzyskania dyplomu",
-                                 "Mediana zarobków w czwartym roku od uzyskania dyplomu",
-                                 "Mediana zarobków w piątym roku od uzyskania dyplomu") ~ "Mediana zarobków (zł)",
-            input$zmienna == "Średni czas (w miesiącach) od uzyskania dyplomu do podjęcia pierwszej pracy po uzyskaniu dyplomu" ~ "Średni czas poszukiwania pracy (miesiące)",
-            input$zmienna == "Odsetek absolwentów z doświadczeniem bezrobocia po uzyskaniu dyplomu" ~ "Odsetek z doświadczeniem bezrobocia (%)",
-            input$zmienna == "Względny Wskaźnik Zarobków absolwentów po uzyskaniu dyplomu" ~ "Względny Wskaźnik Zarobków (WWZ)",
-            input$zmienna == "Względny Wskaźnik Bezrobocia absolwentów po uzyskaniu dyplomu" ~ "Względny Wskaźnik Bezrobocia (WWB)",
-            TRUE ~ "Wartość wskaźnika"
-          )) +
-            scale_x_continuous(breaks = c(2015:2022), limits = c(min(input$lata)-0.5, max(input$lata)+0.5))+
-            theme_bw()
+          ggplot(aes(x = P_ROKDYP)) +
+          geom_line(data = srednia_suma, aes(y = srednia), color = 'black', linewidth = 1) +
+          geom_point(data = srednia_suma, 
+                     aes(y = srednia, 
+                         text = paste(
+                           case_when(
+                             input$zmienna %in% mapowanie_zmiennych$skrot[grepl("^P_ME_ZAR_P[1-5]$", mapowanie_zmiennych$skrot)] ~ paste("Średnia ważona:", srednia, "zł"),
+                             input$zmienna %in% mapowanie_zmiennych$skrot[grepl("^P_E_ZAR_P[1-5]$", mapowanie_zmiennych$skrot)] ~ paste("Średnia ważona:", srednia, "zł"),
+                             input$zmienna == "P_CZAS_PRACA" ~ paste("Średnia ważona:", srednia, "mies."),
+                             input$zmienna == "P_CZY_BEZR" ~ paste("Średnia ważona:", srednia, "%"),
+                             input$zmienna %in% c("P_WWZ", "P_WWB") ~ paste("Średnia ważona:", srednia),
+                             TRUE ~ paste("\nWartość wskaźnika:", srednia)
+                           ),
+                           "\nLiczba absolwentów:", suma_P_N)), 
+                     color = 'black', size = 3) +
+          xlab("Rok uzyskania dyplomu") +
+          ylab(etykieta_y) +
+          scale_x_continuous(breaks = c(2015:2022), limits = c(min(input$lata)-0.5, max(input$lata)+0.5)) +
+          theme_bw()
         
         if (input$on_off) {
           p <- p + geom_line(aes(y = wartosc, group = P_KIERUNEK_ID), color = 'grey') +
@@ -260,15 +313,11 @@ server <- function(input, output, session) {
                            text = paste(
                              "Rok:", P_ROKDYP,
                              case_when(
-                               input$zmienna %in% c("Mediana zarobków w pierwszym roku od uzyskania dyplomu",
-                                                    "Mediana zarobków w drugim roku od uzyskania dyplomu",
-                                                    "Mediana zarobków w trzecim roku od uzyskania dyplomu",
-                                                    "Mediana zarobków w czwartym roku od uzyskania dyplomu",
-                                                    "Mediana zarobków w piątym roku od uzyskania dyplomu") ~ paste("\nMediana:", wartosc, "zł"),
-                               input$zmienna == "Średni czas (w miesiącach) od uzyskania dyplomu do podjęcia pierwszej pracy po uzyskaniu dyplomu" ~ paste("\nŚredni czas poszukiwania pierwszej pracy:", wartosc, "mies."),
-                               input$zmienna == "Odsetek absolwentów z doświadczeniem bezrobocia po uzyskaniu dyplomu" ~ paste("\nOdsetek z doświadczeniem bezrobocia:", wartosc, "%"),
-                               input$zmienna == "Względny Wskaźnik Zarobków absolwentów po uzyskaniu dyplomu" ~ paste("\nWWZ:", wartosc ),
-                               input$zmienna == "Względny Wskaźnik Bezrobocia absolwentów po uzyskaniu dyplomu" ~ paste("\nWWB:", wartosc),
+                               input$zmienna %in% mapowanie_zmiennych$skrot[grepl("^P_ME_ZAR_P[1-5]$", mapowanie_zmiennych$skrot)] ~ paste("\nMediana:", wartosc, "zł"),
+                               input$zmienna %in% mapowanie_zmiennych$skrot[grepl("^P_E_ZAR_P[1-5]$", mapowanie_zmiennych$skrot)] ~ paste("\nŚrednia:", wartosc, "zł"),
+                               input$zmienna == "P_CZAS_PRACA" ~ paste("\nŚredni czas poszukiwania pierwszej pracy:", wartosc, "mies."),
+                               input$zmienna == "P_CZY_BEZR" ~ paste("\nOdsetek z doświadczeniem bezrobocia:", wartosc, "%"),
+                               input$zmienna %in% c("P_WWZ", "P_WWB") ~ paste("\nWWZ:", wartosc),
                                TRUE ~ paste("\nWartość wskaźnika:", wartosc)
                              ),
                              "\nLiczba absolwentów:", P_N,
@@ -278,6 +327,7 @@ server <- function(input, output, session) {
                        color = 'grey')
         }
         
+        # Generowanie interaktywnego wykresu
         ggplotly(p, tooltip = "text")
     })
     

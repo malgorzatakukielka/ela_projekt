@@ -202,22 +202,33 @@ ui <- page_navbar(
 server <- function(input, output, session) {
     
     
-    observeEvent(input$uczelnia, {
-        updateSelectInput(session, "kierunek", selected = NULL)
-        updateSelectInput(session, "poziomforma", selected = NULL) #zamiana inputId
-    })
+  observeEvent(input$uczelnia, {
+    req(input$uczelnia)
+    
+    kierunki_uczelni <- unique(uczelnia()$P_KIERUNEK_NAZWA)
+    
+    # aktualizacja kierunku
+    if (input$kierunek %in% kierunki_uczelni) {
+      updatePickerInput(session, "kierunek", choices = kierunki_uczelni, selected = input$kierunek)
+    } else {
+      updatePickerInput(session, "kierunek", choices = c("", kierunki_uczelni), selected = "")
+      updatePickerInput(session, "poziomforma", choices = "", selected = "")
+      return() # jeśli kierunek nie istnieje
+    }
+    
+    # jeśli kierunek istnieje, ale forma nie
+    poziomy <- unique(kierunek()$P_POZIOMFORMA)
+    
+    if (input$poziomforma %in% poziomy) {
+      updatePickerInput(session, "poziomforma", choices = c("", poziomy), selected = input$poziomforma)
+    } else {
+      updatePickerInput(session, "poziomforma", choices = c("", poziomy), selected = "")
+    }
+  })
+  
     
     uczelnia <- reactive({
         filter(ela1, P_NAZWA_UCZELNI == input$uczelnia)
-    })
-    
-    observeEvent(input$uczelnia, {
-        choices <- unique(uczelnia()$P_KIERUNEK_NAZWA)
-        if (input$kierunek %in% choices) {
-            updatePickerInput(session, inputId = "kierunek", choices = choices, selected = input$kierunek)
-        } else {
-            updatePickerInput(session, inputId = "kierunek", choices = c("", choices))
-        }
     })
     
     kierunek <- reactive({

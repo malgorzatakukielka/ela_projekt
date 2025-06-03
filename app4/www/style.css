@@ -1,0 +1,15 @@
+  .custom-toast .swal2-popup {
+  font-size: 12px !important;
+  padding: 5px 10px !important;
+  border-radius: 5px !important;
+  width: 250px !important;
+}
+
+
+a.dropdown-item.selected.active {
+    color: white !important;
+}
+
+.bootstrap-select .dropdown-toggle .filter-option {
+      overflow-wrap: break-word;
+}

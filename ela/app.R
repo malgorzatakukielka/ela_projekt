@@ -14,7 +14,7 @@ library(shinyWidgets)
 library(bsicons)
 
 #źródło danych 
-ela1 <- read.csv("~/ela_projekt/ela/ela1.csv")
+ela1 <- read.csv("ela1.csv")
 ela1 <- ela1 %>% 
   pivot_longer(cols = 10:23, names_to = "zmienna", values_to = "wartosc") %>% 
   drop_na()
